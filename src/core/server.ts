@@ -1,9 +1,15 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 
 import { ToolRegistry } from './registry.js';
-import { Tool } from './types.js';
+import { PromptRegistry } from './prompt-registry.js';
+import { Tool, Prompt } from './types.js';
 import { AuthenticationManager } from '../auth/index.js';
 import { ZendeskAPIClient } from '../api/index.js';
 import { RateLimiter } from '../middleware/index.js';
@@ -15,10 +21,14 @@ import {
   GetArticleTool,
   SearchTicketsTool,
   GetTicketTool,
+  SearchOrganizationsTool,
+  GetOrganizationTool,
+  SearchUsersTool,
 } from '../tools/index.js';
+import { FindPBInsightsForTicketPrompt } from '../prompts/index.js';
 
 const SERVER_NAME = 'zendesk-mcp-server';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.2.0';
 
 export class ZendeskMCPServer {
   private server?: Server;
@@ -28,6 +38,7 @@ export class ZendeskMCPServer {
   private readonly apiClient: ZendeskAPIClient;
   private readonly rateLimiter: RateLimiter;
   private readonly toolRegistry: ToolRegistry;
+  private readonly promptRegistry: PromptRegistry;
 
   constructor(config: Config) {
     this.logger = new Logger({ level: config.logLevel, pretty: config.logPretty });
@@ -55,6 +66,7 @@ export class ZendeskMCPServer {
     );
 
     this.toolRegistry = new ToolRegistry(this.logger);
+    this.promptRegistry = new PromptRegistry(this.logger);
   }
 
   async initialize(): Promise<void> {
@@ -71,7 +83,10 @@ export class ZendeskMCPServer {
     }
 
     this.registerTools();
-    this.logger.info(`Initialized with ${this.toolRegistry.size()} tools`);
+    this.registerPrompts();
+    this.logger.info(
+      `Initialized with ${this.toolRegistry.size()} tools and ${this.promptRegistry.size()} prompts`,
+    );
   }
 
   async start(): Promise<void> {
@@ -91,14 +106,22 @@ export class ZendeskMCPServer {
       new GetArticleTool(this.apiClient, this.logger),
       new SearchTicketsTool(this.apiClient, this.logger),
       new GetTicketTool(this.apiClient, this.logger),
+      new SearchOrganizationsTool(this.apiClient, this.logger),
+      new GetOrganizationTool(this.apiClient, this.logger),
+      new SearchUsersTool(this.apiClient, this.logger),
     ];
     for (const tool of tools) this.toolRegistry.registerTool(tool);
+  }
+
+  private registerPrompts(): void {
+    const prompts: Prompt[] = [new FindPBInsightsForTicketPrompt()];
+    for (const prompt of prompts) this.promptRegistry.registerPrompt(prompt);
   }
 
   private initializeMCPServer(): void {
     this.server = new Server(
       { name: SERVER_NAME, version: SERVER_VERSION },
-      { capabilities: { tools: {} } },
+      { capabilities: { tools: {}, prompts: {} } },
     );
     this.transport = new StdioServerTransport();
 
@@ -128,6 +151,19 @@ export class ZendeskMCPServer {
           error instanceof Error ? error : undefined,
         );
       }
+    });
+
+    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+      prompts: this.promptRegistry.listPrompts(),
+    }));
+
+    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params as {
+        name: string;
+        arguments?: Record<string, string>;
+      };
+      const messages = this.promptRegistry.renderPrompt(name, args ?? {});
+      return { messages };
     });
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "zendesk-mcp-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Model Context Protocol server for Zendesk — search Help Center articles and Support tickets from any MCP-aware AI assistant.",
   "main": "dist/index.js",
   "type": "module",

@@ -50,8 +50,52 @@ export interface ZendeskTicket {
   organization_id?: number | null;
   group_id?: number | null;
   tags?: string[];
+  custom_fields?: Array<{ id: number; value: unknown }>;
   created_at: string;
   updated_at: string;
+}
+
+export interface ZendeskOrganization {
+  id: number;
+  url: string;
+  name: string;
+  domain_names?: string[];
+  details?: string | null;
+  notes?: string | null;
+  group_id?: number | null;
+  shared_tickets?: boolean;
+  shared_comments?: boolean;
+  external_id?: string | null;
+  tags?: string[];
+  organization_fields?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZendeskUser {
+  id: number;
+  url: string;
+  name: string;
+  email?: string | null;
+  role?: 'end-user' | 'agent' | 'admin';
+  active?: boolean;
+  organization_id?: number | null;
+  phone?: string | null;
+  time_zone?: string;
+  locale?: string;
+  tags?: string[];
+  user_fields?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZendeskTicketField {
+  id: number;
+  type: string;
+  title: string;
+  raw_title?: string;
+  description?: string;
+  active: boolean;
 }
 
 export interface ZendeskComment {

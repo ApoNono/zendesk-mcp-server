@@ -4,18 +4,39 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants — Claude Desktop, Claude Code, Cursor, or any MCP-aware client — search your Zendesk Help Center articles and Support tickets without leaving the chat.
+A [Model Context Protocol](https://modelcontextprotocol.io) server for **product feedback intelligence across the customer journey** — letting AI assistants (Claude Desktop, Claude Code, Cursor) read Zendesk and join it to other systems like [Productboard](https://github.com/miguelarios/productboard-mcp-server) to find patterns no single tool can show alone.
 
-> Ask: *"Find KB articles about SSO setup"* or *"What's the latest comment on ticket 4827?"* and the assistant fetches it directly.
+> Ask: *"Find KB articles about SSO setup"*, *"What's the latest comment on ticket 4827?"*, or *"Find Productboard feedback related to ticket 4827"* — the assistant fetches and synthesises the answer.
 
-## Features
+This server is **read-only by design**. It's positioned for support managers, PMs hunting for product feedback signal in tickets, and KB editors — not for tactical agent operations.
+
+## Tools
 
 | Tool | What it does |
 |------|--------------|
 | `zd_article_search` | Search Help Center articles by keyword. Returns title, URL, snippet. |
 | `zd_article_get` | Fetch a single article's full body by ID, with HTML stripped to plain text. |
 | `zd_ticket_search` | Search tickets using Zendesk's [search query syntax](https://support.zendesk.com/hc/en-us/articles/4408886879258). Auto-scopes to `type:ticket`. |
-| `zd_ticket_get` | Fetch a ticket by ID, optionally with the full comment thread. |
+| `zd_ticket_get` | Fetch a ticket by ID. Side-loads requester + organization + flattens custom fields by default. |
+| `zd_organization_search` | Find organizations by name (autocomplete). Up to 25 matches. |
+| `zd_organization_get` | Full details for an organization by ID, including domain names and custom fields. |
+| `zd_user_search` | Find users by email or name. Refuses overly broad queries. |
+
+## Prompts
+
+Prompts are pre-canned analytical workflows the LLM can invoke. They orchestrate multi-tool calls — sometimes across MCP servers — into a single user-facing command.
+
+| Prompt | What it does | Cross-MCP dependency |
+|--------|--------------|----------------------|
+| `find_pb_insights_for_ticket` | Given a Zendesk ticket ID, finds related Productboard feedback from both the same customer and on the same topic. Surfaces gaps, suggests next actions. | Requires [productboard-mcp-server](https://github.com/miguelarios/productboard-mcp-server) connected. |
+
+When a prompt requires another MCP server, it self-detects whether the peer is available and tells the user how to install it if not.
+
+## Design principles
+
+- **Narrow scope by default** — tools refuse overly broad queries and ask the user to refine, rather than truncating or churning through huge result sets.
+- **Read-only** — no writes, no destructive operations, no risk of misfired AI calls hitting customers.
+- **Cross-MCP composition** — prompts orchestrate this server with peers (Productboard, eventually others) rather than reimplementing their APIs.
 
 Built-in: token-bucket rate limiting per tool, exponential-backoff retries on 5xx and 429, structured logging via Pino, strict TypeScript.
 
@@ -73,6 +94,31 @@ claude mcp add zendesk -- node /absolute/path/to/zendesk-mcp-server/dist/index.j
 
 This server speaks standard MCP over stdio. Any client that accepts a `command + args + env` config will work. See your client's docs for the exact config location.
 
+### Pair with Productboard MCP server (optional)
+
+To use the cross-system prompts (e.g. `find_pb_insights_for_ticket`), also connect [productboard-mcp-server](https://github.com/miguelarios/productboard-mcp-server) in the same MCP client config. Both servers run side-by-side and the AI orchestrates across them.
+
+Example combined Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "zendesk": {
+      "command": "node",
+      "args": ["/path/to/zendesk-mcp-server/dist/index.js"],
+      "env": { "ZENDESK_SUBDOMAIN": "...", "ZENDESK_EMAIL": "...", "ZENDESK_API_TOKEN": "..." }
+    },
+    "productboard": {
+      "command": "node",
+      "args": ["/path/to/productboard-mcp-server/dist/index.js"],
+      "env": { "PRODUCTBOARD_AUTH_TYPE": "bearer", "PRODUCTBOARD_API_TOKEN": "..." }
+    }
+  }
+}
+```
+
+The cross-system prompts self-detect whether Productboard is available; if not, they tell you how to install it.
+
 ## Configuration
 
 | Env var | Required | Default | Notes |
@@ -90,10 +136,22 @@ This server speaks standard MCP over stdio. Any client that accepts a `command +
 
 Once connected, ask your assistant things like:
 
+**Knowledge base**
 - *"Search the Zendesk knowledge base for articles about password resets."*
 - *"Get the full text of KB article 360001234567."*
+
+**Tickets with full context**
 - *"Show me all open high-priority tickets assigned to me."*
-- *"What's ticket 4827 about? Include the comment thread."*
+- *"What's ticket 4827 about? Include the customer's organization and the comment thread."*
+- *"Find all open tickets from ACME Corp."* (uses `zd_organization_search` then scoped ticket search)
+
+**Customer-centric questions**
+- *"Has bob@acme.com filed any other tickets recently?"*
+- *"Tell me about the ACME Corp organization in Zendesk."*
+
+**Cross-system feedback intelligence** (requires productboard-mcp-server)
+- *"Use the find_pb_insights_for_ticket prompt for ticket 4827."*
+- *"For ticket 4827, find any related Productboard feedback."*
 
 The assistant decides which tool to call and with what arguments — you don't need to know the API.
 
@@ -151,17 +209,23 @@ The server retries with backoff, but if you hit this consistently, increase `RAT
 ```
 src/
 ├── index.ts                — CLI entry point
-├── core/                   — MCP server, tool registry, types
+├── core/                   — MCP server, tool + prompt registries, types
 ├── auth/manager.ts         — Zendesk basic auth (email/token → base64)
 ├── api/                    — axios client with retry + rate limiting
 ├── middleware/             — rate limiter, JSON schema validator
 ├── utils/                  — logger, config, errors, retry
-└── tools/
-    ├── articles/           — zd_article_search, zd_article_get
-    └── tickets/            — zd_ticket_search, zd_ticket_get
+├── tools/
+│   ├── articles/           — zd_article_search, zd_article_get
+│   ├── tickets/            — zd_ticket_search, zd_ticket_get
+│   ├── organizations/      — zd_organization_search, zd_organization_get
+│   └── users/              — zd_user_search
+└── prompts/                — analytical workflow templates
+    └── find-pb-insights.ts — cross-MCP feedback intelligence
 ```
 
-Adding a new tool: extend `BaseTool`, define a JSON schema for parameters, implement `executeInternal`, register it in `src/core/server.ts`. See `src/tools/articles/get-article.ts` for a minimal example.
+**Adding a new tool**: extend `BaseTool`, define a JSON schema for parameters, implement `executeInternal`, register it in `src/core/server.ts`. See `src/tools/articles/get-article.ts` for a minimal example.
+
+**Adding a new prompt**: implement the `Prompt` interface, return `PromptMessage[]` from `render()`, register it in `src/core/server.ts`. For cross-MCP prompts, instruct the LLM in the prompt body to verify required peer tools (e.g. `pb_*`) are available before proceeding. See `src/prompts/find-pb-insights.ts` for the pattern.
 
 ## Contributing
 
