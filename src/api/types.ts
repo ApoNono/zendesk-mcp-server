@@ -98,6 +98,31 @@ export interface ZendeskTicketField {
   active: boolean;
 }
 
+export type SatisfactionScore =
+  | 'offered'
+  | 'unoffered'
+  | 'received'
+  | 'received_with_comment'
+  | 'good'
+  | 'good_with_comment'
+  | 'bad'
+  | 'bad_with_comment';
+
+export interface ZendeskSatisfactionRating {
+  id: number;
+  url: string;
+  assignee_id?: number | null;
+  group_id?: number | null;
+  requester_id?: number;
+  ticket_id?: number;
+  score: SatisfactionScore;
+  comment?: string | null;
+  reason?: string | null;
+  reason_code?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ZendeskComment {
   id: number;
   type: 'Comment' | 'VoiceComment';

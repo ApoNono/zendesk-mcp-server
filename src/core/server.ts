@@ -21,14 +21,17 @@ import {
   GetArticleTool,
   SearchTicketsTool,
   GetTicketTool,
+  CountTicketsByTool,
   SearchOrganizationsTool,
   GetOrganizationTool,
   SearchUsersTool,
+  SatisfactionSummaryTool,
+  ListSatisfactionRatingsTool,
 } from '../tools/index.js';
-import { FindPBInsightsForTicketPrompt } from '../prompts/index.js';
+import { FindPBInsightsForTicketPrompt, WeeklySupportDigestPrompt } from '../prompts/index.js';
 
 const SERVER_NAME = 'zendesk-mcp-server';
-const SERVER_VERSION = '0.2.1';
+const SERVER_VERSION = '0.3.0';
 
 export class ZendeskMCPServer {
   private server?: Server;
@@ -106,15 +109,21 @@ export class ZendeskMCPServer {
       new GetArticleTool(this.apiClient, this.logger),
       new SearchTicketsTool(this.apiClient, this.logger),
       new GetTicketTool(this.apiClient, this.logger),
+      new CountTicketsByTool(this.apiClient, this.logger),
       new SearchOrganizationsTool(this.apiClient, this.logger),
       new GetOrganizationTool(this.apiClient, this.logger),
       new SearchUsersTool(this.apiClient, this.logger),
+      new SatisfactionSummaryTool(this.apiClient, this.logger),
+      new ListSatisfactionRatingsTool(this.apiClient, this.logger),
     ];
     for (const tool of tools) this.toolRegistry.registerTool(tool);
   }
 
   private registerPrompts(): void {
-    const prompts: Prompt[] = [new FindPBInsightsForTicketPrompt()];
+    const prompts: Prompt[] = [
+      new FindPBInsightsForTicketPrompt(),
+      new WeeklySupportDigestPrompt(),
+    ];
     for (const prompt of prompts) this.promptRegistry.registerPrompt(prompt);
   }
 
