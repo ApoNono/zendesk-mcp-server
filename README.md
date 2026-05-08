@@ -18,9 +18,12 @@ This server is **read-only by design**. It's positioned for support managers, PM
 | `zd_article_get` | Fetch a single article's full body by ID, with HTML stripped to plain text. |
 | `zd_ticket_search` | Search tickets using Zendesk's [search query syntax](https://support.zendesk.com/hc/en-us/articles/4408886879258). Auto-scopes to `type:ticket`. |
 | `zd_ticket_get` | Fetch a ticket by ID. Side-loads requester + organization + flattens custom fields by default. |
+| `zd_tickets_count_by` | Count tickets grouped by status / priority / type, with at least one filter applied (date range, org, tag, or requester). |
 | `zd_organization_search` | Find organizations by name (autocomplete). Up to 25 matches. |
 | `zd_organization_get` | Full details for an organization by ID, including domain names and custom fields. |
 | `zd_user_search` | Find users by email or name. Refuses overly broad queries. |
+| `zd_satisfaction_summary` | Pre-aggregated CSAT for a date range: % positive, count by score, top reasons. Defaults to last 30 days. |
+| `zd_satisfaction_ratings_list` | Drill-down: individual ratings with comments and reasons. Requires at least one filter. |
 
 ## Prompts
 
@@ -29,6 +32,7 @@ Prompts are pre-canned analytical workflows the LLM can invoke. They orchestrate
 | Prompt | What it does | Cross-MCP dependency |
 |--------|--------------|----------------------|
 | `find_pb_insights_for_ticket` | Given a Zendesk ticket ID, finds related Productboard feedback from both the same customer and on the same topic. Surfaces gaps, suggests next actions. | Requires [productboard-mcp-server](https://github.com/miguelarios/productboard-mcp-server) connected. |
+| `weekly_support_digest` | Manager-readable digest of the last N days (default 7): volume by status/priority, CSAT, recurring themes, hotspots. ~60-second read. | None. |
 
 When a prompt requires another MCP server, it self-detects whether the peer is available and tells the user how to install it if not.
 
@@ -149,6 +153,12 @@ Once connected, ask your assistant things like:
 - *"Has bob@acme.com filed any other tickets recently?"*
 - *"Tell me about the ACME Corp organization in Zendesk."*
 
+**Analytics and reporting**
+- *"Give me the weekly support digest."* (uses the `weekly_support_digest` prompt)
+- *"What's our CSAT for the last 30 days?"*
+- *"How many tickets did ACME Corp open this month, by status?"*
+- *"Show me ratings with negative scores from the last week."*
+
 **Cross-system feedback intelligence** (requires productboard-mcp-server)
 - *"Use the find_pb_insights_for_ticket prompt for ticket 4827."*
 - *"For ticket 4827, find any related Productboard feedback."*
@@ -216,11 +226,13 @@ src/
 ├── utils/                  — logger, config, errors, retry
 ├── tools/
 │   ├── articles/           — zd_article_search, zd_article_get
-│   ├── tickets/            — zd_ticket_search, zd_ticket_get
+│   ├── tickets/            — zd_ticket_search, zd_ticket_get, zd_tickets_count_by
 │   ├── organizations/      — zd_organization_search, zd_organization_get
-│   └── users/              — zd_user_search
+│   ├── users/              — zd_user_search
+│   └── satisfaction/       — zd_satisfaction_summary, zd_satisfaction_ratings_list
 └── prompts/                — analytical workflow templates
-    └── find-pb-insights.ts — cross-MCP feedback intelligence
+    ├── find-pb-insights.ts — cross-MCP feedback intelligence
+    └── weekly-digest.ts    — manager-readable support digest
 ```
 
 **Adding a new tool**: extend `BaseTool`, define a JSON schema for parameters, implement `executeInternal`, register it in `src/core/server.ts`. See `src/tools/articles/get-article.ts` for a minimal example.
