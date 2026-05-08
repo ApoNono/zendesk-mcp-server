@@ -28,7 +28,7 @@ import {
 import { FindPBInsightsForTicketPrompt } from '../prompts/index.js';
 
 const SERVER_NAME = 'zendesk-mcp-server';
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.2.1';
 
 export class ZendeskMCPServer {
   private server?: Server;
