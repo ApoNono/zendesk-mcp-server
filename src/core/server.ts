@@ -30,6 +30,7 @@ import {
   ListSectionsTool,
   ListRecentArticlesTool,
   UpdateArticleTool,
+  CreateArticleTool,
   FindTextInArticlesTool,
   ReplaceTextInArticlesTool,
 } from '../tools/index.js';
@@ -127,6 +128,7 @@ export class ZendeskMCPServer {
       new ListSectionsTool(this.brandRegistry, this.logger),
       new ListRecentArticlesTool(this.brandRegistry, this.logger),
       new UpdateArticleTool(this.brandRegistry, this.logger),
+      new CreateArticleTool(this.brandRegistry, this.logger),
       new FindTextInArticlesTool(this.brandRegistry, this.logger),
       new ReplaceTextInArticlesTool(this.brandRegistry, this.logger),
     ];

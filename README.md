@@ -34,6 +34,7 @@ Positioned for support managers, PMs hunting for product feedback signal in tick
 
 | Tool | What it does |
 |------|--------------|
+| `zd_article_create` | Create a new article in a specific brand's section. Defaults to draft=true for safety. Supports labels, permission_group_id, user_segment_id, author_id, and `create_reason` audit note. |
 | `zd_article_update` | Update a single article's title, body, labels, section, or draft/promoted/outdated state. Only sends fields you explicitly pass. Supports `update_reason` audit note. |
 | `zd_articles_replace_text` | Apply a plain-string find/replace to an explicit list of article IDs within one brand. HTML-safe. Regex not supported (use `scripts/replace-text-in-articles.ts` for regex). |
 
