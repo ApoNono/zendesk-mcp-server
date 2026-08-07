@@ -6,31 +6,23 @@ const logger = new Logger({ level: 'fatal' });
 
 describe('AuthenticationManager', () => {
   describe('constructor', () => {
-    it('throws on missing subdomain', () => {
-      expect(
-        () =>
-          new AuthenticationManager({ subdomain: '', email: 'a@b.com', apiToken: 'tok' }, logger),
-      ).toThrow(ConfigurationError);
-    });
-
     it('throws on missing email', () => {
-      expect(
-        () => new AuthenticationManager({ subdomain: 'sub', email: '', apiToken: 'tok' }, logger),
-      ).toThrow(ConfigurationError);
+      expect(() => new AuthenticationManager({ email: '', apiToken: 'tok' }, logger)).toThrow(
+        ConfigurationError,
+      );
     });
 
     it('throws on missing token', () => {
-      expect(
-        () =>
-          new AuthenticationManager({ subdomain: 'sub', email: 'a@b.com', apiToken: '' }, logger),
-      ).toThrow(ConfigurationError);
+      expect(() => new AuthenticationManager({ email: 'a@b.com', apiToken: '' }, logger)).toThrow(
+        ConfigurationError,
+      );
     });
   });
 
   describe('getAuthHeaders', () => {
     it('produces base64-encoded Basic auth in the form email/token:TOKEN', () => {
       const auth = new AuthenticationManager(
-        { subdomain: 'acme', email: 'agent@acme.com', apiToken: 'abc123' },
+        { email: 'agent@acme.com', apiToken: 'abc123' },
         logger,
       );
       const headers = auth.getAuthHeaders();
@@ -42,13 +34,16 @@ describe('AuthenticationManager', () => {
     });
 
     it('sets JSON content type and accept headers', () => {
-      const auth = new AuthenticationManager(
-        { subdomain: 'acme', email: 'a@b.com', apiToken: 't' },
-        logger,
-      );
+      const auth = new AuthenticationManager({ email: 'a@b.com', apiToken: 't' }, logger);
       const headers = auth.getAuthHeaders();
       expect(headers['Content-Type']).toBe('application/json');
       expect(headers.Accept).toBe('application/json');
+    });
+
+    it('produces identical headers regardless of which brand the request targets', () => {
+      // Auth is account-scoped, not brand-scoped.
+      const auth = new AuthenticationManager({ email: 'a@b.com', apiToken: 't' }, logger);
+      expect(auth.getAuthHeaders()).toEqual(auth.getAuthHeaders());
     });
   });
 });
