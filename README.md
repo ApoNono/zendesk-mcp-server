@@ -2,28 +2,41 @@
 
 [![CI](https://github.com/ApoNono/zendesk-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ApoNono/zendesk-mcp-server/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for **product feedback intelligence across the customer journey** — letting AI assistants (Claude Desktop, Claude Code, Cursor) read Zendesk and join it to other systems like [Productboard](https://github.com/miguelarios/productboard-mcp-server) to find patterns no single tool can show alone.
+A [Model Context Protocol](https://modelcontextprotocol.io) server for **product feedback intelligence and documentation-team enablement across the customer journey** — letting AI assistants (Claude Desktop, Claude Code, Cursor) read Zendesk, join it to other systems like [Productboard](https://github.com/miguelarios/productboard-mcp-server), and (since v0.4) apply approved content updates back to the Help Center.
 
-> Ask: *"Find KB articles about SSO setup"*, *"What's the latest comment on ticket 4827?"*, or *"Find Productboard feedback related to ticket 4827"* — the assistant fetches and synthesises the answer.
+> Ask: *"Find KB articles about SSO setup"*, *"What's the latest comment on ticket 4827?"*, or *"For the Q3 release notes in Jira, find the Zendesk articles that need updating and draft the changes in Confluence for review."*
 
-This server is **read-only by design**. It's positioned for support managers, PMs hunting for product feedback signal in tickets, and KB editors — not for tactical agent operations.
+Positioned for support managers, PMs hunting for product feedback signal in tickets, KB editors, and documentation teams doing multi-brand content maintenance.
 
 ## Tools
+
+### Read-only
 
 | Tool | What it does |
 |------|--------------|
 | `zd_article_search` | Search Help Center articles by keyword. Returns title, URL, snippet. |
 | `zd_article_get` | Fetch a single article's full body by ID, with HTML stripped to plain text. |
+| `zd_article_list_recent` | List articles updated within a date range (default last 7 days). Also supports `before` for stale-article audits. |
+| `zd_articles_find_text` | Find articles containing plain-text across one or more brands. HTML-safe (skips URLs, code blocks). |
 | `zd_ticket_search` | Search tickets using Zendesk's [search query syntax](https://support.zendesk.com/hc/en-us/articles/4408886879258). Auto-scopes to `type:ticket`. |
 | `zd_ticket_get` | Fetch a ticket by ID. Side-loads requester + organization + flattens custom fields by default. |
-| `zd_tickets_count_by` | Count tickets grouped by status / priority / type, with at least one filter applied (date range, org, tag, or requester). |
+| `zd_tickets_count_by` | Count tickets grouped by status / priority / type, with at least one filter applied. |
 | `zd_organization_search` | Find organizations by name (autocomplete). Up to 25 matches. |
 | `zd_organization_get` | Full details for an organization by ID, including domain names and custom fields. |
 | `zd_user_search` | Find users by email or name. Refuses overly broad queries. |
 | `zd_satisfaction_summary` | Pre-aggregated CSAT for a date range: % positive, count by score, top reasons. Defaults to last 30 days. |
 | `zd_satisfaction_ratings_list` | Drill-down: individual ratings with comments and reasons. Requires at least one filter. |
+| `zd_sections_list` | List Help Center categories and sections per brand. Use to find section IDs when moving articles. |
+
+### Writes (v0.4+)
+
+| Tool | What it does |
+|------|--------------|
+| `zd_article_create` | Create a new article in a specific brand's section. Defaults to draft=true for safety. Supports labels, permission_group_id, user_segment_id, author_id, and `create_reason` audit note. |
+| `zd_article_update` | Update a single article's title, body, labels, section, or draft/promoted/outdated state. Only sends fields you explicitly pass. Supports `update_reason` audit note. |
+| `zd_articles_replace_text` | Apply a plain-string find/replace to an explicit list of article IDs within one brand. HTML-safe. Regex not supported (use `scripts/replace-text-in-articles.ts` for regex). |
 
 ## Prompts
 
@@ -39,8 +52,9 @@ When a prompt requires another MCP server, it self-detects whether the peer is a
 ## Design principles
 
 - **Narrow scope by default** — tools refuse overly broad queries and ask the user to refine, rather than truncating or churning through huge result sets.
-- **Read-only** — no writes, no destructive operations, no risk of misfired AI calls hitting customers.
+- **Writes require explicit article IDs** — no bulk "find and update everything matching" operations. The user (or Claude) has to enumerate the target articles first (usually via `zd_articles_find_text`) and confirm the list before writes are applied. Ticket writes and article creation/deletion remain out of scope.
 - **Cross-MCP composition** — prompts orchestrate this server with peers (Productboard, eventually others) rather than reimplementing their APIs.
+- **Cross-brand aware** — configure multiple Zendesk brands via `ZENDESK_BRANDS`; the tools that need it (find, update, replace, sections) operate against any configured brand.
 
 Built-in: token-bucket rate limiting per tool, exponential-backoff retries on 5xx and 429, structured logging via Pino, strict TypeScript.
 
@@ -127,7 +141,8 @@ The cross-system prompts self-detect whether Productboard is available; if not, 
 
 | Env var | Required | Default | Notes |
 |---------|----------|---------|-------|
-| `ZENDESK_SUBDOMAIN` | yes | — | The part before `.zendesk.com` (e.g. `acme` for `acme.zendesk.com`). |
+| `ZENDESK_SUBDOMAIN` | one of these | — | Single-brand setups. The part before `.zendesk.com` (e.g. `acme` for `acme.zendesk.com`). |
+| `ZENDESK_BRANDS` | one of these | — | Multi-brand setups (v0.4+). Comma-separated subdomains, e.g. `help-admin,help-partners`. Primary brand is first in the list. Overrides `ZENDESK_SUBDOMAIN` when both are set. |
 | `ZENDESK_EMAIL` | yes | — | Email of the Zendesk user the token belongs to. |
 | `ZENDESK_API_TOKEN` | yes | — | API token from Admin Center. |
 | `ZENDESK_API_TIMEOUT` | no | `10000` | HTTP timeout in ms. |
@@ -192,7 +207,7 @@ npm test             # jest
 npm run format       # prettier --write
 ```
 
-CI runs typecheck, lint, test, and build on Node 18, 20, and 22 for every push and PR.
+CI runs typecheck, lint, test, and build on Node 20 and 22 for every push and PR.
 
 ## Troubleshooting
 

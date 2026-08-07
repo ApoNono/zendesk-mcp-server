@@ -11,7 +11,7 @@ import { ToolRegistry } from './registry.js';
 import { PromptRegistry } from './prompt-registry.js';
 import { Tool, Prompt } from './types.js';
 import { AuthenticationManager } from '../auth/index.js';
-import { ZendeskAPIClient } from '../api/index.js';
+import { BrandRegistry } from '../api/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import { Config, Logger } from '../utils/index.js';
 import { ServerError, ToolExecutionError } from '../utils/errors.js';
@@ -27,18 +27,24 @@ import {
   SearchUsersTool,
   SatisfactionSummaryTool,
   ListSatisfactionRatingsTool,
+  ListSectionsTool,
+  ListRecentArticlesTool,
+  UpdateArticleTool,
+  CreateArticleTool,
+  FindTextInArticlesTool,
+  ReplaceTextInArticlesTool,
 } from '../tools/index.js';
 import { FindPBInsightsForTicketPrompt, WeeklySupportDigestPrompt } from '../prompts/index.js';
 
 const SERVER_NAME = 'zendesk-mcp-server';
-const SERVER_VERSION = '0.3.0';
+const SERVER_VERSION = '0.4.0';
 
 export class ZendeskMCPServer {
   private server?: Server;
   private transport?: StdioServerTransport;
   private readonly logger: Logger;
   private readonly authManager: AuthenticationManager;
-  private readonly apiClient: ZendeskAPIClient;
+  private readonly brandRegistry: BrandRegistry;
   private readonly rateLimiter: RateLimiter;
   private readonly toolRegistry: ToolRegistry;
   private readonly promptRegistry: PromptRegistry;
@@ -47,11 +53,7 @@ export class ZendeskMCPServer {
     this.logger = new Logger({ level: config.logLevel, pretty: config.logPretty });
 
     this.authManager = new AuthenticationManager(
-      {
-        subdomain: config.auth.subdomain,
-        email: config.auth.email,
-        apiToken: config.auth.apiToken,
-      },
+      { email: config.auth.email, apiToken: config.auth.apiToken },
       this.logger,
     );
 
@@ -61,7 +63,8 @@ export class ZendeskMCPServer {
       config.rateLimit.perTool,
     );
 
-    this.apiClient = new ZendeskAPIClient(
+    this.brandRegistry = new BrandRegistry(
+      config.auth.brands,
       config.api,
       this.authManager,
       this.logger,
@@ -73,12 +76,15 @@ export class ZendeskMCPServer {
   }
 
   async initialize(): Promise<void> {
-    this.logger.info('Initializing Zendesk MCP Server...');
+    this.logger.info('Initializing Zendesk MCP Server...', {
+      brands: this.brandRegistry.list().map((b) => b.subdomain),
+    });
     this.initializeMCPServer();
 
     if (process.env.NODE_ENV !== 'test') {
       this.logger.info('Validating Zendesk credentials...');
-      const ok = await this.authManager.validateCredentials();
+      const primary = this.brandRegistry.primary();
+      const ok = await this.authManager.validateCredentials(primary.subdomain);
       if (!ok) {
         throw new ServerError('Zendesk credential validation failed (HTTP 401)');
       }
@@ -104,17 +110,27 @@ export class ZendeskMCPServer {
   }
 
   private registerTools(): void {
+    const primaryClient = this.brandRegistry.primaryClient();
+    // Existing single-brand tools use the primary brand. Cross-brand tools
+    // (article-management writes, find/replace, sections listing) take the
+    // BrandRegistry so they can operate across every configured brand.
     const tools: Tool[] = [
-      new SearchArticlesTool(this.apiClient, this.logger),
-      new GetArticleTool(this.apiClient, this.logger),
-      new SearchTicketsTool(this.apiClient, this.logger),
-      new GetTicketTool(this.apiClient, this.logger),
-      new CountTicketsByTool(this.apiClient, this.logger),
-      new SearchOrganizationsTool(this.apiClient, this.logger),
-      new GetOrganizationTool(this.apiClient, this.logger),
-      new SearchUsersTool(this.apiClient, this.logger),
-      new SatisfactionSummaryTool(this.apiClient, this.logger),
-      new ListSatisfactionRatingsTool(this.apiClient, this.logger),
+      new SearchArticlesTool(primaryClient, this.logger),
+      new GetArticleTool(primaryClient, this.logger),
+      new SearchTicketsTool(primaryClient, this.logger),
+      new GetTicketTool(primaryClient, this.logger),
+      new CountTicketsByTool(primaryClient, this.logger),
+      new SearchOrganizationsTool(primaryClient, this.logger),
+      new GetOrganizationTool(primaryClient, this.logger),
+      new SearchUsersTool(primaryClient, this.logger),
+      new SatisfactionSummaryTool(primaryClient, this.logger),
+      new ListSatisfactionRatingsTool(primaryClient, this.logger),
+      new ListSectionsTool(this.brandRegistry, this.logger),
+      new ListRecentArticlesTool(this.brandRegistry, this.logger),
+      new UpdateArticleTool(this.brandRegistry, this.logger),
+      new CreateArticleTool(this.brandRegistry, this.logger),
+      new FindTextInArticlesTool(this.brandRegistry, this.logger),
+      new ReplaceTextInArticlesTool(this.brandRegistry, this.logger),
     ];
     for (const tool of tools) this.toolRegistry.registerTool(tool);
   }
