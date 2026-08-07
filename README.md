@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ApoNono/zendesk-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ApoNono/zendesk-mcp-server/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for **product feedback intelligence and documentation-team enablement across the customer journey** — letting AI assistants (Claude Desktop, Claude Code, Cursor) read Zendesk, join it to other systems like [Productboard](https://github.com/miguelarios/productboard-mcp-server), and (since v0.4) apply approved content updates back to the Help Center.
 
@@ -207,7 +207,7 @@ npm test             # jest
 npm run format       # prettier --write
 ```
 
-CI runs typecheck, lint, test, and build on Node 18, 20, and 22 for every push and PR.
+CI runs typecheck, lint, test, and build on Node 20 and 22 for every push and PR.
 
 ## Troubleshooting
 
