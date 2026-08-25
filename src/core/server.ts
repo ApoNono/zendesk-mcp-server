@@ -37,7 +37,7 @@ import {
 import { FindPBInsightsForTicketPrompt, WeeklySupportDigestPrompt } from '../prompts/index.js';
 
 const SERVER_NAME = 'zendesk-mcp-server';
-const SERVER_VERSION = '0.4.1';
+const SERVER_VERSION = '0.4.2';
 
 export class ZendeskMCPServer {
   private server?: Server;
@@ -115,8 +115,8 @@ export class ZendeskMCPServer {
     // (article-management writes, find/replace, sections listing) take the
     // BrandRegistry so they can operate across every configured brand.
     const tools: Tool[] = [
-      new SearchArticlesTool(primaryClient, this.logger),
-      new GetArticleTool(primaryClient, this.logger),
+      new SearchArticlesTool(this.brandRegistry, this.logger),
+      new GetArticleTool(this.brandRegistry, this.logger),
       new SearchTicketsTool(primaryClient, this.logger),
       new GetTicketTool(primaryClient, this.logger),
       new CountTicketsByTool(primaryClient, this.logger),
